@@ -26,6 +26,7 @@ serde = { features = ['derive'], optional = true, version = '1.0.119' }
 
 # local dependencies
 pallet-template = { path = '../pallets/template', default-features = false, version = '2.0.1' }
+pallet-open-grant = { path = '../pallets/open-grant', default-features = false, version = '0.0.1' }
 
 # Substrate dependencies
 frame-benchmarking = { default-features = false, optional = true, version = '2.0.1' }
@@ -82,6 +83,7 @@ std = [
     'pallet-timestamp/std',
     'pallet-transaction-payment/std',
     'pallet-transaction-payment-rpc-runtime-api/std',
+    'pallet-open-grant/std',
     'sp-api/std',
     'sp-block-builder/std',
     'sp-consensus-aura/std',
