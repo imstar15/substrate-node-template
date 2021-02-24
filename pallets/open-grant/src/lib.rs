@@ -28,6 +28,7 @@ pub trait Trait: frame_system::Trait {
 #[derive(Encode, Decode, Default, PartialEq, Eq, Clone, Debug)]
 pub struct Project {
 	name: Vec<u8>,
+	fee: u32,
 }
 
 // The pallet's runtime storage items.
@@ -115,12 +116,12 @@ decl_module! {
 
 		/// Create project
 		#[weight = 10_000 + T::DbWeight::get().reads_writes(1,1)]
-		pub fn create_project(origin, name: Vec<u8>) -> dispatch::DispatchResult {
+		pub fn create_project(origin, name: Vec<u8>, fee: u32) -> dispatch::DispatchResult {
 			let who = ensure_signed(origin)?;
-			let project = Project { name: name, };
+			let project = Project { name: name, fee: fee };
 			MyProject::put(&project);
-			// Self::deposit_event(RawEvent::ProjectStored(project, who));
-			Self::deposit_event(RawEvent::SomethingStored(6, who));
+			Self::deposit_event(RawEvent::ProjectStored(project, who));
+			// Self::deposit_event(RawEvent::SomethingStored(6, who));
 			Ok(())
 		}
 

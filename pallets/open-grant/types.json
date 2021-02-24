@@ -1,6 +1,7 @@
   
 {
     "Project": {
-        "name": "Vec<u8>"
+        "name": "Vec<u8>",
+        "fee": "u32"
     }
 }
