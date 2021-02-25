@@ -12,12 +12,6 @@ use frame_support::{
 use frame_system::ensure_signed;
 use sp_std::prelude::*;
 
-#[cfg(test)]
-mod mock;
-
-#[cfg(test)]
-mod tests;
-
 /// Configure the pallet by specifying the parameters and types on which it depends.
 pub trait Trait: frame_system::Trait {
 	/// Because this pallet emits events, it depends on the runtime's definition of an event.
@@ -41,7 +35,7 @@ decl_storage! {
 		// Learn more about declaring storage items:
 		// https://substrate.dev/docs/en/knowledgebase/runtime/storage#declaring-storage-items
 		Something get(fn something): Option<u32>;
-		MyProject get(fn my_project): Project;
+		Projects get(fn projects): Vec<Project>;
 	}
 }
 
@@ -119,9 +113,10 @@ decl_module! {
 		pub fn create_project(origin, name: Vec<u8>, fee: u32) -> dispatch::DispatchResult {
 			let who = ensure_signed(origin)?;
 			let project = Project { name: name, fee: fee };
-			MyProject::put(&project);
+			let mut projects = Projects::get();
+			projects.push(project.clone());
+			Projects::put(projects);
 			Self::deposit_event(RawEvent::ProjectStored(project, who));
-			// Self::deposit_event(RawEvent::SomethingStored(6, who));
 			Ok(())
 		}
 
