@@ -462,8 +462,14 @@ impl pallet_template::Config for Runtime {
 	type Event = Event;
 }
 
+parameter_types! {
+	pub const OpenGrantModuleId: ModuleId = ModuleId(*b"py/opgrd");
+}
+
 impl pallet_open_grant::Config for Runtime {
+	type ModuleId = OpenGrantModuleId;
 	type Event = Event;
+	type Currency = Balances;
 }
 
 // Create the runtime by composing the FRAME pallets that were previously configured.

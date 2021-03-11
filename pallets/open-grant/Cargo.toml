@@ -22,6 +22,9 @@ version = '2.0.0'
 frame-support = { default-features = false, version = '3.0.0' }
 frame-system = { default-features = false, version = '3.0.0' }
 sp-std = { default-features = false, version = '3.0.0' }
+sp-runtime = { default-features = false, version = '3.0.0' }
+sp-core = { default-features = false, version = '3.0.0' }
+integer-sqrt = { default-features = false, version = '0.1.5' }
 
 [dev-dependencies]
 sp-core = { default-features = false, version = '3.0.0' }
