@@ -1,7 +1,15 @@
-  
 {
-    "Project": {
+    "GrantIndex": "u32",
+    "GrantRoundIndex": "u32",
+    "Contribution": {
+        "account_id": "AccountId",
+        "value": "Balance"
+    },
+    "Grant": {
         "name": "Vec<u8>",
-        "fee": "u32"
+        "logo": "Vec<u8>",
+        "description": "Vec<u8>",
+        "website": "Vec<u8>",
+        "owner": "AccountId"
     }
 }
