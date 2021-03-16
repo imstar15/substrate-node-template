@@ -374,7 +374,7 @@ decl_module! {
 				ExistenceRequirement::AllowDeath
 			)?;
 
-			// Set is_allowed_withdraw
+			// Set is_withdrawn
 			grant.is_withdrawn = true;
 		}
 
@@ -396,7 +396,7 @@ decl_module! {
 
 			let grant = found_grant.ok_or(Error::<T>::NoActiveGrant)?;
 
-			// This grant must not have distributed funds
+			// This grant must not have canceled
 			ensure!(!grant.is_canceled, Error::<T>::NoActiveGrant);
 
 			for contribution in grant.contributions.iter() {
