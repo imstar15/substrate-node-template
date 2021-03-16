@@ -34,16 +34,15 @@ pub trait Config: frame_system::Config {
 	type Event: From<Event<Self>> + Into<<Self as frame_system::Config>::Event>;
 }
 
-/// Simple index for identifying a fund.
-pub type GrantIndex = u32;
+pub type ProjectIndex = u32;
 pub type GrantRoundIndex = u32;
 
 type AccountIdOf<T> = <T as frame_system::Config>::AccountId;
 type BalanceOf<T> = <<T as Config>::Currency as Currency<AccountIdOf<T>>>::Balance;
-type GrantOf<T> = Grant<AccountIdOf<T>>;
+type ProjectOf<T> = Project<AccountIdOf<T>>;
 type ContributionOf<T> = Contribution<AccountIdOf<T>, BalanceOf<T>>;
 type GrantRoundOf<T> = GrantRound<AccountIdOf<T>, BalanceOf<T>, <T as frame_system::Config>::BlockNumber>;
-type GrantInRoundOf<T> = GrantInRound<AccountIdOf<T>, BalanceOf<T>>;
+type GrantOf<T> = Grant<AccountIdOf<T>, BalanceOf<T>>;
 
 /// Grant Round struct
 #[derive(Encode, Decode, Default, PartialEq, Eq, Clone, Debug)]
@@ -51,13 +50,35 @@ pub struct GrantRound<AccountId, Balance, BlockNumber> {
 	start: BlockNumber,
 	end: BlockNumber,
 	matching_fund: Balance,
-	grants: Vec<GrantInRound<AccountId, Balance>>,
+	grants: Vec<Grant<AccountId, Balance>>,
 }
+
+impl<AccountId, Balance, BlockNumber> GrantRound<AccountId, Balance, BlockNumber> {
+    fn new(start: BlockNumber, end: BlockNumber, matching_fund: Balance, project_indexes: Vec<ProjectIndex>) -> GrantRound<AccountId, Balance, BlockNumber> { 
+		let mut grant_round  = GrantRound {
+			start: start,
+			end: end,
+			matching_fund: matching_fund,
+			grants: Vec::new(),
+		};
+
+		// Fill in the grants structure in advance
+		for project_index in project_indexes {
+			grant_round.grants.push(Grant {
+				project_index: project_index,
+				contributions: Vec::new(),
+				is_distributed_fund: false,
+			});
+		}
+
+		grant_round
+	}
+} 
 
 // Grant in round
 #[derive(Encode, Decode, Default, PartialEq, Eq, Clone, Debug)]
-pub struct GrantInRound<AccountId, Balance> {
-	grant_index: GrantIndex,
+pub struct Grant<AccountId, Balance> {
+	project_index: ProjectIndex,
 	contributions: Vec<Contribution<AccountId, Balance>>,
 	is_distributed_fund: bool,
 }
@@ -69,9 +90,9 @@ pub struct Contribution<AccountId, Balance> {
 	value: Balance,
 }
 
-/// Grant struct
+/// Project struct
 #[derive(Encode, Decode, Default, PartialEq, Eq, Clone, Debug)]
-pub struct Grant<AccountId> {
+pub struct Project<AccountId> {
 	name: Vec<u8>,
 	logo: Vec<u8>,
 	description: Vec<u8>,
@@ -89,8 +110,8 @@ decl_storage! {
 	trait Store for Module<T: Config> as OpenGrantModule {
 		// Learn more about declaring storage items:
 		// https://substrate.dev/docs/en/knowledgebase/runtime/storage#declaring-storage-items
-		Grants get(fn grants): map hasher(blake2_128_concat) GrantIndex => Option<GrantOf<T>>;
-		GrantCount get(fn fund_count): GrantIndex;
+		Projects get(fn grants): map hasher(blake2_128_concat) ProjectIndex => Option<ProjectOf<T>>;
+		ProjectCount get(fn project_count): ProjectIndex;
 
 		GrantRounds get(fn grant_rounds): map hasher(blake2_128_concat) GrantRoundIndex => Option<GrantRoundOf<T>>;
 		GrantRoundCount get(fn grant_round_count): GrantRoundIndex;
@@ -104,9 +125,9 @@ decl_event!(
 		/// Event documentation should end with an array that provides descriptive names for event
 		/// parameters. [something, who]
 		SomethingStored(u32, AccountId),
-		GrantStored(GrantIndex, AccountId),
+		// GrantStored(GrantIndex, AccountId),
 		ContributeSucceed(AccountId, u128),
-		Contributed(AccountId, GrantIndex, Balance, BlockNumber),
+		Contributed(AccountId, ProjectIndex, Balance, BlockNumber),
 	}
 );
 
@@ -142,15 +163,15 @@ decl_module! {
 
 		/// Create project
 		#[weight = 10_000 + T::DbWeight::get().reads_writes(1,1)]
-		pub fn create_grant(origin, name: Vec<u8>, logo: Vec<u8>, description: Vec<u8>, website: Vec<u8>) {
+		pub fn create_project(origin, name: Vec<u8>, logo: Vec<u8>, description: Vec<u8>, website: Vec<u8>) {
 			let who = ensure_signed(origin)?;
 
 			// TODO: Validation
-			let index = GrantCount::get();
+			let index = ProjectCount::get();
 			let next_index = index.checked_add(1).ok_or(Error::<T>::Overflow)?;
 
 			// Create a grant 
-			let grant = GrantOf::<T> {
+			let project = ProjectOf::<T> {
 				name: name,
 				logo: logo,
 				description: description,
@@ -159,18 +180,18 @@ decl_module! {
 			};
 
 			// Add grant to list
-			<Grants<T>>::insert(index, grant);
-			GrantCount::put(next_index);
+			<Projects<T>>::insert(index, project);
+			ProjectCount::put(next_index);
 		}
 
 		/// Schedule a round
 		/// If the last round is not over, no new round can be scheduled
 		/// grant_indexes: the grants were selected for this round
 		#[weight = 10_000 + T::DbWeight::get().reads_writes(1,1)]
-		pub fn schedule_round(origin, matching_fund: BalanceOf<T>, start: T::BlockNumber, end: T::BlockNumber, grant_indexes: Vec<GrantIndex>) {
+		pub fn schedule_round(origin, start: T::BlockNumber, end: T::BlockNumber, matching_fund: BalanceOf<T>, project_indexes: Vec<ProjectIndex>) {
 			let who = ensure_signed(origin)?;
 			let now = <frame_system::Module<T>>::block_number();
-			let index = GrantCount::get();
+			let index = ProjectCount::get();
 
 			// The end block must be greater than the start block
 			ensure!(end > start, Error::<T>::EndTooEarly);
@@ -185,27 +206,11 @@ decl_module! {
 			
 			let next_index = index.checked_add(1).ok_or(Error::<T>::Overflow)?;
 
-			// TODO: OOD
-			// Create round
-			let mut round = GrantRoundOf::<T> {
-				start: start,
-				end: end,
-				matching_fund: matching_fund,
-				grants: Vec::new(),
-			};
-
-			// Fill in the grants structure in advance
-			for grant_index in grant_indexes {
-				round.grants.push(GrantInRound {
-					grant_index: grant_index,
-					contributions: Vec::new(),
-					is_distributed_fund: false,
-				});
-			}
+			let round = GrantRoundOf::<T>::new(start, end, matching_fund, project_indexes);
 
 			// Add grant round to list
 			<GrantRounds<T>>::insert(index, round);
-			GrantCount::put(next_index);
+			ProjectCount::put(next_index);
 
 			// Transfer matching fund to module account
 			T::Currency::transfer(
@@ -214,29 +219,25 @@ decl_module! {
 				matching_fund,
 				ExistenceRequirement::AllowDeath
 			)?;
-			
-			// 看看有没有插入成功
-			let grant_round = <GrantRounds<T>>::get(index);
-			debug::debug!("grant: {:#?}", grant_round);
 		}
 
 		/// Contribute a grant
 		#[weight = 10_000 + T::DbWeight::get().reads_writes(1,1)]
-		pub fn contribute(origin, index: GrantIndex, value: BalanceOf<T>) {
+		pub fn contribute(origin, project_index: ProjectIndex, value: BalanceOf<T>) {
 			let who = ensure_signed(origin)?;
 			let now = <frame_system::Module<T>>::block_number();
 			
 			// round list must be not none
-			let round_index = GrantCount::get() - 1;
+			let round_index = ProjectCount::get() - 1;
 			ensure!(round_index > 0, Error::<T>::NoActiveRound);
 			// The round must be in progress
 			let mut round = <GrantRounds<T>>::get(round_index).ok_or(Error::<T>::NoActiveRound)?;
 			ensure!(round.end < now, Error::<T>::NoActiveRound);
 
 			// Find grant by index
-			let mut found_grant: Option<&mut GrantInRoundOf::<T>> = None;
+			let mut found_grant: Option<&mut GrantOf::<T>> = None;
 			for grant in round.grants.iter_mut() {
-				if grant.grant_index == index {
+				if grant.project_index == project_index {
 					found_grant = Some(grant);
 					break;
 				}
@@ -273,7 +274,7 @@ decl_module! {
 					// Transfer contribute to grant account
 					T::Currency::transfer(
 						&who,
-						&Self::grant_account_id(index),
+						&Self::project_account_id(project_index),
 						value,
 						ExistenceRequirement::AllowDeath
 					)?;
@@ -283,7 +284,7 @@ decl_module! {
 
 		// Distribute fund from grant
 		#[weight = 10_000 + T::DbWeight::get().reads_writes(1,1)]
-		pub fn distribute_fund(origin, round_index: GrantRoundIndex, grant_index: GrantIndex) {
+		pub fn distribute_fund(origin, round_index: GrantRoundIndex, project_index: ProjectIndex) {
 			ensure!(round_index > 0, Error::<T>::NoActiveRound);
 			let round = <GrantRounds<T>>::get(round_index).ok_or(Error::<T>::NoActiveRound)?;
 			let mut grants = round.grants;
@@ -297,13 +298,15 @@ decl_module! {
 			let mut total_clr = 0;
 			let matching_fund = Self::balance_to_u128(round.matching_fund);
 
-			let mut found_grant: Option<&mut GrantInRoundOf::<T>> = None;
+			// let mut found_grant: Option<&mut GrantInRoundOf::<T>> = None;
+			let mut grant_index: Option<usize> = None;
 			let mut contribution_amount = 0;
 
 			// Calculate grant CLR
-			for grant in grants.iter_mut() {
+			for i in 0..grants.len() {
+				let grant = &grants[i];
 				let mut sqrt_sum = 0;
-				for contribution in grant.contributions.iter_mut() {
+				for contribution in grant.contributions.iter() {
 					let contribution_value = Self::balance_to_u128(contribution.value);
 					debug::debug!("contribution_value: {}", contribution_value);
 					sqrt_sum += contribution_value.integer_sqrt();
@@ -314,19 +317,20 @@ decl_module! {
 				grant_clrs.push(grant_clr);
 				total_clr += grant_clr;
 
-				if grant.grant_index == grant_index {
-					found_grant = Some(grant);
+				if grant.project_index == project_index {
+					grant_index = Some(i);
 				}
 			}
 
-			let grant = found_grant.ok_or(Error::<T>::NoActiveGrant)?;
+			let grant_index = grant_index.ok_or(Error::<T>::NoActiveGrant)?;
+			let mut grant = &mut grants[grant_index];
 
 			// This grant must not have distributed funds
 			ensure!(grant.is_distributed_fund, Error::<T>::NoActiveGrant);
 
 			// Calculate CLR
-			let grant_clr = grant_clrs[grant_index as usize];
-			let project = Grants::<T>::get(grant_index).ok_or(Error::<T>::NoActiveGrant)?;
+			let grant_clr = grant_clrs[project_index as usize];
+			let project = Projects::<T>::get(project_index).ok_or(Error::<T>::NoActiveGrant)?;
 			let grant_matching_fund = ((grant_clr as f64 / total_clr as f64) * matching_fund as f64) as u128;
 
 			// Distribute CLR amount
@@ -338,9 +342,8 @@ decl_module! {
 			)?;
 
 			// Distribute distribution
-			let grant_account_id = &Self::grant_account_id(grant_index as u32);
 			T::Currency::transfer(
-				grant_account_id,
+				&Self::project_account_id(project_index),
 				&project.owner,
 				Self::u128_to_balance(contribution_amount),
 				ExistenceRequirement::AllowDeath
@@ -358,12 +361,10 @@ impl<T: Config> Module<T> {
 	/// This actually does computation. If you need to keep using it, then make sure you cache the
 	/// value and only call this once.
 	pub fn account_id() -> T::AccountId {
-		let account = T::ModuleId::get().into_account();
-		// println!("account: {}", account);
-		return account;
+		return T::ModuleId::get().into_account();
 	}
 
-	pub fn grant_account_id(index: GrantIndex) -> T::AccountId {
+	pub fn project_account_id(index: ProjectIndex) -> T::AccountId {
 		T::ModuleId::get().into_sub_account(index)
 	}
 
