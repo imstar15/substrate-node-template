@@ -67,7 +67,10 @@ impl<AccountId, Balance, BlockNumber> GrantRound<AccountId, Balance, BlockNumber
 			grant_round.grants.push(Grant {
 				project_index: project_index,
 				contributions: Vec::new(),
-				is_distributed_fund: false,
+				is_allowed_withdraw: false,
+				is_canceled: false,
+				is_withdrawn: false,
+
 			});
 		}
 
@@ -80,7 +83,9 @@ impl<AccountId, Balance, BlockNumber> GrantRound<AccountId, Balance, BlockNumber
 pub struct Grant<AccountId, Balance> {
 	project_index: ProjectIndex,
 	contributions: Vec<Contribution<AccountId, Balance>>,
-	is_distributed_fund: bool,
+	is_allowed_withdraw: bool,
+	is_canceled: bool,
+	is_withdrawn: bool,
 }
 
 /// Grant struct
@@ -284,7 +289,7 @@ decl_module! {
 
 		// Distribute fund from grant
 		#[weight = 10_000 + T::DbWeight::get().reads_writes(1,1)]
-		pub fn distribute_fund(origin, round_index: GrantRoundIndex, project_index: ProjectIndex) {
+		pub fn allow_withdraw(origin, round_index: GrantRoundIndex, project_index: ProjectIndex) {
 			ensure!(round_index > 0, Error::<T>::NoActiveRound);
 			let round = <GrantRounds<T>>::get(round_index).ok_or(Error::<T>::NoActiveRound)?;
 			let mut grants = round.grants;
@@ -293,18 +298,37 @@ decl_module! {
 			let now = <frame_system::Module<T>>::block_number();
 			ensure!(round.end < now, Error::<T>::NoActiveRound);
 
+			// Find grant from list
+			let mut found_grant: Option<&mut GrantOf::<T>> = None;
+			for grant in grants.iter_mut() {
+				if grant.project_index == project_index {
+					found_grant = Some(grant);
+					break;
+				}
+			}
+			let mut grant = found_grant.ok_or(Error::<T>::NoActiveGrant)?;
+			ensure!(!grant.is_canceled, Error::<T>::NoActiveGrant);
+
+			// set is_allowed_withdraw
+			grant.is_allowed_withdraw = true;
+		}
+
+		#[weight = 10_000 + T::DbWeight::get().reads_writes(1,1)]
+		pub fn withdraw(origin, round_index: GrantRoundIndex, project_index: ProjectIndex) {
+			ensure!(round_index > 0, Error::<T>::NoActiveRound);
+			let round = <GrantRounds<T>>::get(round_index).ok_or(Error::<T>::NoActiveRound)?;
+			let mut grants = round.grants;
+
 			// Calculate CLR(Capital-constrained Liberal Radicalism) for grant
 			let mut grant_clrs = Vec::new();
 			let mut total_clr = 0;
 			let matching_fund = Self::balance_to_u128(round.matching_fund);
 
-			// let mut found_grant: Option<&mut GrantInRoundOf::<T>> = None;
-			let mut grant_index: Option<usize> = None;
+			let mut found_grant: Option<&mut GrantOf::<T>> = None;
 			let mut contribution_amount = 0;
 
 			// Calculate grant CLR
-			for i in 0..grants.len() {
-				let grant = &grants[i];
+			for grant in grants.iter_mut() {
 				let mut sqrt_sum = 0;
 				for contribution in grant.contributions.iter() {
 					let contribution_value = Self::balance_to_u128(contribution.value);
@@ -318,15 +342,16 @@ decl_module! {
 				total_clr += grant_clr;
 
 				if grant.project_index == project_index {
-					grant_index = Some(i);
+					found_grant = Some(grant);
 				}
 			}
 
-			let grant_index = grant_index.ok_or(Error::<T>::NoActiveGrant)?;
-			let mut grant = &mut grants[grant_index];
+			let grant = found_grant.ok_or(Error::<T>::NoActiveGrant)?;
 
 			// This grant must not have distributed funds
-			ensure!(grant.is_distributed_fund, Error::<T>::NoActiveGrant);
+			ensure!(grant.is_allowed_withdraw, Error::<T>::NoActiveGrant);
+			ensure!(!grant.is_withdrawn, Error::<T>::NoActiveGrant);
+			ensure!(!grant.is_canceled, Error::<T>::NoActiveGrant);
 
 			// Calculate CLR
 			let grant_clr = grant_clrs[project_index as usize];
@@ -349,8 +374,41 @@ decl_module! {
 				ExistenceRequirement::AllowDeath
 			)?;
 
-			// Set is_distributed_fund
-			grant.is_distributed_fund = true;
+			// Set is_allowed_withdraw
+			grant.is_withdrawn = true;
+		}
+
+		#[weight = 10_000 + T::DbWeight::get().reads_writes(1,1)]
+		pub fn cancel(origin, round_index: GrantRoundIndex, project_index: ProjectIndex) {
+			ensure!(round_index > 0, Error::<T>::NoActiveRound);
+			let round = <GrantRounds<T>>::get(round_index).ok_or(Error::<T>::NoActiveRound)?;
+			let mut grants = round.grants;
+
+			let mut found_grant: Option<&mut GrantOf::<T>> = None;
+
+			// Calculate grant CLR
+			for grant in grants.iter_mut() {
+				if grant.project_index == project_index {
+					found_grant = Some(grant);
+					break;
+				}
+			}
+
+			let grant = found_grant.ok_or(Error::<T>::NoActiveGrant)?;
+
+			// This grant must not have distributed funds
+			ensure!(!grant.is_canceled, Error::<T>::NoActiveGrant);
+
+			for contribution in grant.contributions.iter() {
+				T::Currency::transfer(
+					&Self::project_account_id(project_index),
+					&contribution.account_id,
+					contribution.value,
+					ExistenceRequirement::AllowDeath
+				)?;
+			}
+
+			grant.is_canceled = true;
 		}
 	}
 }
