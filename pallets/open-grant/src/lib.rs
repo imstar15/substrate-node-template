@@ -286,7 +286,7 @@ decl_module! {
 		pub fn distribute_fund(origin, round_index: GrantRoundIndex, grant_index: GrantIndex) {
 			ensure!(round_index > 0, Error::<T>::NoActiveRound);
 			let round = <GrantRounds<T>>::get(round_index).ok_or(Error::<T>::NoActiveRound)?;
-			let grants = round.grants;
+			let mut grants = round.grants;
 
 			// The round must have ended
 			let now = <frame_system::Module<T>>::block_number();
@@ -295,13 +295,13 @@ decl_module! {
 			// Calculate CLR(Capital-constrained Liberal Radicalism) for grant
 			let mut grant_clrs = Vec::new();
 			let mut total_clr = 0;
-			let total = Self::balance_to_u128(round.matching_fund);
+			let matching_fund = Self::balance_to_u128(round.matching_fund);
 
 			let mut found_grant: Option<&mut GrantInRoundOf::<T>> = None;
-			let contribution_amount = 0;
+			let mut contribution_amount = 0;
 
 			// Calculate grant CLR
-			for grant in grants.iter() {
+			for grant in grants.iter_mut() {
 				let mut sqrt_sum = 0;
 				for contribution in grant.contributions.iter_mut() {
 					let contribution_value = Self::balance_to_u128(contribution.value);
@@ -320,21 +320,20 @@ decl_module! {
 			}
 
 			let grant = found_grant.ok_or(Error::<T>::NoActiveGrant)?;
-			let project = Grants::<T>::get(grant_index).unwrap();
 
 			// This grant must not have distributed funds
 			ensure!(grant.is_distributed_fund, Error::<T>::NoActiveGrant);
 
 			// Calculate CLR
 			let grant_clr = grant_clrs[grant_index as usize];
-			let bal = Self::u128_to_balance(((grant_clr as f64 / total_clr as f64) * total as f64) as u128);
 			let project = Grants::<T>::get(grant_index).ok_or(Error::<T>::NoActiveGrant)?;
+			let grant_matching_fund = ((grant_clr as f64 / total_clr as f64) * matching_fund as f64) as u128;
 
 			// Distribute CLR amount
 			T::Currency::transfer(
 				&Self::account_id(),
 				&project.owner,
-				Self::u128_to_balance(((grant_clr as f64 / total_clr as f64) * total as f64) as u128),
+				Self::u128_to_balance(grant_matching_fund),
 				ExistenceRequirement::AllowDeath
 			)?;
 
