@@ -59,6 +59,7 @@ pub struct GrantRound<AccountId, Balance, BlockNumber> {
 pub struct GrantInRound<AccountId, Balance> {
 	grant_index: GrantIndex,
 	contributions: Vec<Contribution<AccountId, Balance>>,
+	is_distributed_fund: bool,
 }
 
 /// Grant struct
@@ -125,6 +126,7 @@ decl_error! {
 		EndBlockNumberInvalid,
 		EndTooEarly,
 		NoActiveRound,
+		NoActiveGrant,
 	}
 }
 
@@ -196,6 +198,7 @@ decl_module! {
 				round.grants.push(GrantInRound {
 					grant_index: grant_index,
 					contributions: Vec::new(),
+					is_distributed_fund: false,
 				});
 			}
 
@@ -276,59 +279,71 @@ decl_module! {
 			}
 		}
 
-		// End round
-		// Calculate all contributions and matching, and settle the funds to the project party
+		// Distribute fund from grant
 		#[weight = 10_000 + T::DbWeight::get().reads_writes(1,1)]
-		pub fn end_round(origin) {
-			let round_index = GrantCount::get() - 1;
+		pub fn distribute_fund(origin, round_index: GrantRoundIndex, grant_index: GrantIndex) {
 			ensure!(round_index > 0, Error::<T>::NoActiveRound);
 			let round = <GrantRounds<T>>::get(round_index).ok_or(Error::<T>::NoActiveRound)?;
 			let grants = round.grants;
 
+			let now = <frame_system::Module<T>>::block_number();
+			ensure!(round.end < now, Error::<T>::NoActiveRound);
+
 			// Calculate CLR(Capital-constrained Liberal Radicalism) for grant
 			let mut grant_clrs = Vec::new();
 			let mut total_clr = 0;
+			let total = Self::balance_to_u128(round.matching_fund);
+
+			let mut found_grant: Option<&mut GrantInRoundOf::<T>> = None;
+			let contribution_amount = 0;
+
 			for grant in grants.iter() {
 				let mut sqrt_sum = 0;
-				for contribution in grant.contributions.iter() {
+				for contribution in grant.contributions.iter_mut() {
 					let contribution_value = Self::balance_to_u128(contribution.value);
 					debug::debug!("contribution_value: {}", contribution_value);
 					sqrt_sum += contribution_value.integer_sqrt();
+					contribution_amount += contribution_value;
 				}
 				debug::debug!("grant_sum: {}", sqrt_sum);
 				let grant_clr = sqrt_sum * sqrt_sum;
 				grant_clrs.push(grant_clr);
 				total_clr += grant_clr;
+
+				if grant.grant_index == grant_index {
+					found_grant = Some(grant);
+				}
 			}
 
-			// Transfer CLR matching amount and contribution to project owner
-			let total = Self::balance_to_u128(T::Currency::total_balance(&Self::account_id()));
-			for i in 0..grants.len() {
-				let grant_clr = grant_clrs[i];
-				let bal = Self::u128_to_balance(((grant_clr as f64 / total_clr as f64) * total as f64) as u128);
-				let project = Grants::<T>::get(grants[i].grant_index).unwrap();
-				debug::debug!("Self::account_id(): {:#?}", Self::account_id());
-				debug::debug!("grants[i].owner: {:#?}", project.owner);
-				debug::debug!("bal: {:#?}", bal);
-				
-				//  Transfer CLR matching amount to project owner
-				T::Currency::transfer(
-					&Self::account_id(),
-					&project.owner,
-					Self::u128_to_balance(((grant_clr as f64 / total_clr as f64) * total as f64) as u128),
-					ExistenceRequirement::AllowDeath
-				)?;
+			let grant = found_grant.ok_or(Error::<T>::NoActiveGrant)?;
+			let project = Grants::<T>::get(grant_index).unwrap();
 
-				// Transfer contribution to project owner
-				let grant_account_id = &Self::grant_account_id(i as u32);
-				let contribution_balance = T::Currency::total_balance(grant_account_id);
-				T::Currency::transfer(
-					grant_account_id,
-					&project.owner,
-					contribution_balance,
-					ExistenceRequirement::AllowDeath
-				)?;
-			}
+			// This grant must not have distributed funds
+			ensure!(grant.is_distributed_fund, Error::<T>::NoActiveGrant);
+
+			// Calculate CLR
+			let grant_clr = grant_clrs[grant_index as usize];
+			let bal = Self::u128_to_balance(((grant_clr as f64 / total_clr as f64) * total as f64) as u128);
+			let project = Grants::<T>::get(grant_index).ok_or(Error::<T>::NoActiveGrant)?;
+
+			// Distribute CLR amount
+			T::Currency::transfer(
+				&Self::account_id(),
+				&project.owner,
+				Self::u128_to_balance(((grant_clr as f64 / total_clr as f64) * total as f64) as u128),
+				ExistenceRequirement::AllowDeath
+			)?;
+
+			// Distribute distribution
+			let grant_account_id = &Self::grant_account_id(grant_index as u32);
+			T::Currency::transfer(
+				grant_account_id,
+				&project.owner,
+				Self::u128_to_balance(contribution_amount),
+				ExistenceRequirement::AllowDeath
+			)?;
+
+			grant.is_distributed_fund = true;
 		}
 	}
 }
