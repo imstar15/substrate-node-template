@@ -89,7 +89,6 @@ decl_storage! {
 	trait Store for Module<T: Config> as OpenGrantModule {
 		// Learn more about declaring storage items:
 		// https://substrate.dev/docs/en/knowledgebase/runtime/storage#declaring-storage-items
-		// Grants get(fn projects): Vec<GrantOf<T>>;
 		Grants get(fn grants): map hasher(blake2_128_concat) GrantIndex => Option<GrantOf<T>>;
 		GrantCount get(fn fund_count): GrantIndex;
 
@@ -146,6 +145,7 @@ decl_module! {
 		pub fn create_grant(origin, name: Vec<u8>, logo: Vec<u8>, description: Vec<u8>, website: Vec<u8>) {
 			let who = ensure_signed(origin)?;
 
+			// TODO: Validation
 			let index = GrantCount::get();
 			let next_index = index.checked_add(1).ok_or(Error::<T>::Overflow)?;
 
@@ -185,6 +185,7 @@ decl_module! {
 			
 			let next_index = index.checked_add(1).ok_or(Error::<T>::Overflow)?;
 
+			// TODO: OOD
 			// Create round
 			let mut round = GrantRoundOf::<T> {
 				start: start,
@@ -224,14 +225,7 @@ decl_module! {
 		pub fn contribute(origin, index: GrantIndex, value: BalanceOf<T>) {
 			let who = ensure_signed(origin)?;
 			let now = <frame_system::Module<T>>::block_number();
-
-			T::Currency::transfer(
-				&who,
-				&Self::grant_account_id(index),
-				value,
-				ExistenceRequirement::AllowDeath
-			)?;
-
+			
 			// round list must be not none
 			let round_index = GrantCount::get() - 1;
 			ensure!(round_index > 0, Error::<T>::NoActiveRound);
@@ -252,7 +246,7 @@ decl_module! {
 			// If you have contributed before, then add to that contribution. Otherwise join the list.
 			let mut found_contribution: Option<&mut ContributionOf::<T>> = None;
 			match found_grant {
-				None => Err(Error::<T>::NoneValue)?,
+				None => Err(Error::<T>::NoActiveGrant)?,
 				Some(ref mut grant) => {
 					for contribution in grant.contributions.iter_mut() {
 						debug::debug!("contribution.account_id: {:#?}", contribution.account_id);
@@ -275,6 +269,14 @@ decl_module! {
 							debug::debug!("contributions: {:#?}", grant.contributions);
 						}
 					}
+
+					// Transfer contribute to grant account
+					T::Currency::transfer(
+						&who,
+						&Self::grant_account_id(index),
+						value,
+						ExistenceRequirement::AllowDeath
+					)?;
 				},
 			}
 		}
@@ -286,6 +288,7 @@ decl_module! {
 			let round = <GrantRounds<T>>::get(round_index).ok_or(Error::<T>::NoActiveRound)?;
 			let grants = round.grants;
 
+			// The round must have ended
 			let now = <frame_system::Module<T>>::block_number();
 			ensure!(round.end < now, Error::<T>::NoActiveRound);
 
@@ -297,6 +300,7 @@ decl_module! {
 			let mut found_grant: Option<&mut GrantInRoundOf::<T>> = None;
 			let contribution_amount = 0;
 
+			// Calculate grant CLR
 			for grant in grants.iter() {
 				let mut sqrt_sum = 0;
 				for contribution in grant.contributions.iter_mut() {
@@ -343,6 +347,7 @@ decl_module! {
 				ExistenceRequirement::AllowDeath
 			)?;
 
+			// Set is_distributed_fund
 			grant.is_distributed_fund = true;
 		}
 	}
