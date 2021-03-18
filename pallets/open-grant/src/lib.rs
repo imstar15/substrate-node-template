@@ -324,11 +324,12 @@ decl_module! {
 			let mut total_clr = 0;
 			let matching_fund = Self::balance_to_u128(round.matching_fund);
 
-			let mut found_grant: Option<&mut GrantOf::<T>> = None;
+			let mut grant_index: Option<usize> = None;
 			let mut contribution_amount = 0;
 
 			// Calculate grant CLR
-			for grant in grants.iter_mut() {
+			for i in 0..grants.len() {
+				let grant = &grants[i];
 				let mut sqrt_sum = 0;
 				for contribution in grant.contributions.iter() {
 					let contribution_value = Self::balance_to_u128(contribution.value);
@@ -342,11 +343,12 @@ decl_module! {
 				total_clr += grant_clr;
 
 				if grant.project_index == project_index {
-					found_grant = Some(grant);
+					grant_index = Some(i);
 				}
 			}
 
-			let grant = found_grant.ok_or(Error::<T>::NoActiveGrant)?;
+			let grant_index = grant_index.ok_or(Error::<T>::NoActiveGrant)?;
+			let mut grant = &mut grants[grant_index];
 
 			// This grant must not have distributed funds
 			ensure!(grant.is_allowed_withdraw, Error::<T>::NoActiveGrant);
@@ -354,7 +356,7 @@ decl_module! {
 			ensure!(!grant.is_canceled, Error::<T>::NoActiveGrant);
 
 			// Calculate CLR
-			let grant_clr = grant_clrs[project_index as usize];
+			let grant_clr = grant_clrs[grant_index];
 			let project = Projects::<T>::get(project_index).ok_or(Error::<T>::NoActiveGrant)?;
 			let grant_matching_fund = ((grant_clr as f64 / total_clr as f64) * matching_fund as f64) as u128;
 
