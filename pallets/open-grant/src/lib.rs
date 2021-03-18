@@ -371,7 +371,7 @@ decl_module! {
 			let grant_matching_fund = ((grant_clr as f64 / total_clr as f64) * matching_fund as f64) as u128;
 
 			// Distribute CLR amount
-			let grant_matching_fund = Self::u128_to_balance(grant_matching_fund)
+			let grant_matching_fund = Self::u128_to_balance(grant_matching_fund);
 			T::Currency::transfer(
 				&Self::account_id(),
 				&project.owner,
