@@ -129,11 +129,12 @@ decl_event!(
 	pub enum Event<T> where Balance = BalanceOf<T>, AccountId = <T as frame_system::Config>::AccountId, <T as frame_system::Config>::BlockNumber {
 		/// Event documentation should end with an array that provides descriptive names for event
 		/// parameters. [something, who]
-		SomethingStored(u32, AccountId),
-		// GrantStored(GrantIndex, AccountId),
 		ProjectCreated(ProjectIndex),
-		ContributeSucceed(AccountId, u128),
-		Contributed(AccountId, ProjectIndex, Balance, BlockNumber),
+		GrantRoundCreated(GrantRoundIndex),
+		ContributeSucceed(AccountId, ProjectIndex, Balance, BlockNumber),
+		GrantCanceled(GrantRoundIndex, ProjectIndex),
+		GrantWithdrawn(GrantRoundIndex, ProjectIndex, Balance, Balance),
+		GrantAllowedWithdraw(GrantRoundIndex, ProjectIndex),
 	}
 );
 
@@ -227,6 +228,8 @@ decl_module! {
 				matching_fund,
 				ExistenceRequirement::AllowDeath
 			)?;
+
+			Self::deposit_event(RawEvent::GrantRoundCreated(index));
 		}
 
 		/// Contribute a grant
@@ -288,6 +291,8 @@ decl_module! {
 					)?;
 				},
 			}
+
+			Self::deposit_event(RawEvent::ContributeSucceed(who, project_index, value, now));
 		}
 
 		// Distribute fund from grant
@@ -314,6 +319,8 @@ decl_module! {
 
 			// set is_allowed_withdraw
 			grant.is_allowed_withdraw = true;
+
+			Self::deposit_event(RawEvent::GrantAllowedWithdraw(round_index, project_index));
 		}
 
 		#[weight = 10_000 + T::DbWeight::get().reads_writes(1,1)]
@@ -364,23 +371,27 @@ decl_module! {
 			let grant_matching_fund = ((grant_clr as f64 / total_clr as f64) * matching_fund as f64) as u128;
 
 			// Distribute CLR amount
+			let grant_matching_fund = Self::u128_to_balance(grant_matching_fund)
 			T::Currency::transfer(
 				&Self::account_id(),
 				&project.owner,
-				Self::u128_to_balance(grant_matching_fund),
+				grant_matching_fund,
 				ExistenceRequirement::AllowDeath
 			)?;
 
 			// Distribute distribution
+			let contribution_fund = Self::u128_to_balance(contribution_amount);
 			T::Currency::transfer(
 				&Self::project_account_id(project_index),
 				&project.owner,
-				Self::u128_to_balance(contribution_amount),
+				contribution_fund,
 				ExistenceRequirement::AllowDeath
 			)?;
 
 			// Set is_withdrawn
 			grant.is_withdrawn = true;
+
+			Self::deposit_event(RawEvent::GrantWithdrawn(round_index, project_index, grant_matching_fund, contribution_fund));
 		}
 
 		#[weight = 10_000 + T::DbWeight::get().reads_writes(1,1)]
@@ -414,6 +425,8 @@ decl_module! {
 			}
 
 			grant.is_canceled = true;
+
+			Self::deposit_event(RawEvent::GrantCanceled(round_index, project_index));
 		}
 	}
 }
