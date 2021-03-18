@@ -131,6 +131,7 @@ decl_event!(
 		/// parameters. [something, who]
 		SomethingStored(u32, AccountId),
 		// GrantStored(GrantIndex, AccountId),
+		ProjectCreated(ProjectIndex),
 		ContributeSucceed(AccountId, u128),
 		Contributed(AccountId, ProjectIndex, Balance, BlockNumber),
 	}
@@ -187,6 +188,8 @@ decl_module! {
 			// Add grant to list
 			<Projects<T>>::insert(index, project);
 			ProjectCount::put(next_index);
+
+			Self::deposit_event(RawEvent::ProjectCreated(index));
 		}
 
 		/// Schedule a round
