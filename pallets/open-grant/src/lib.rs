@@ -210,7 +210,7 @@ decl_module! {
 			ensure!(end > now, Error::<T>::EndBlockNumberInvalid);
 			// Make sure the last round is over
 			if index != 0 {
-				let round = <GrantRounds<T>>::get(index).unwrap();
+				let round = <GrantRounds<T>>::get(index-1).unwrap();
 				ensure!(now > round.end, Error::<T>::RoundProcessing);
 			}
 			
