@@ -51,15 +51,17 @@ pub struct GrantRound<AccountId, Balance, BlockNumber> {
 	end: BlockNumber,
 	matching_fund: Balance,
 	grants: Vec<Grant<AccountId, Balance>>,
+	funder: AccountId,
 }
 
 impl<AccountId, Balance, BlockNumber> GrantRound<AccountId, Balance, BlockNumber> {
-    fn new(start: BlockNumber, end: BlockNumber, matching_fund: Balance, project_indexes: Vec<ProjectIndex>) -> GrantRound<AccountId, Balance, BlockNumber> { 
+    fn new(start: BlockNumber, end: BlockNumber, matching_fund: Balance, project_indexes: Vec<ProjectIndex>, funder: AccountId) -> GrantRound<AccountId, Balance, BlockNumber> { 
 		let mut grant_round  = GrantRound {
 			start: start,
 			end: end,
 			matching_fund: matching_fund,
 			grants: Vec::new(),
+			funder: funder,
 		};
 
 		// Fill in the grants structure in advance
@@ -154,6 +156,7 @@ decl_error! {
 		EndTooEarly,
 		NoActiveRound,
 		NoActiveGrant,
+		InvalidParam,
 	}
 }
 
@@ -173,7 +176,17 @@ decl_module! {
 		pub fn create_project(origin, name: Vec<u8>, logo: Vec<u8>, description: Vec<u8>, website: Vec<u8>) {
 			let who = ensure_signed(origin)?;
 
+			debug::debug!("name: {:#?}", name);
+			debug::debug!("logo: {:#?}", logo);
+			debug::debug!("description: {:#?}", description);
+			debug::debug!("website: {:#?}", website);
+
 			// TODO: Validation
+			ensure!(name.len() > 0, Error::<T>::InvalidParam);
+			ensure!(logo.len() > 0, Error::<T>::InvalidParam);
+			ensure!(description.len() > 0, Error::<T>::InvalidParam);
+			ensure!(website.len() > 0, Error::<T>::InvalidParam);
+			
 			let index = ProjectCount::get();
 			let next_index = index.checked_add(1).ok_or(Error::<T>::Overflow)?;
 
@@ -200,7 +213,7 @@ decl_module! {
 		pub fn schedule_round(origin, start: T::BlockNumber, end: T::BlockNumber, matching_fund: BalanceOf<T>, project_indexes: Vec<ProjectIndex>) {
 			let who = ensure_signed(origin)?;
 			let now = <frame_system::Module<T>>::block_number();
-			let index = ProjectCount::get();
+			let index = GrantRoundCount::get();
 
 			// The end block must be greater than the start block
 			ensure!(end > start, Error::<T>::EndTooEarly);
@@ -215,11 +228,11 @@ decl_module! {
 			
 			let next_index = index.checked_add(1).ok_or(Error::<T>::Overflow)?;
 
-			let round = GrantRoundOf::<T>::new(start, end, matching_fund, project_indexes);
+			let round = GrantRoundOf::<T>::new(start, end, matching_fund, project_indexes, who.clone());
 
 			// Add grant round to list
 			<GrantRounds<T>>::insert(index, round);
-			ProjectCount::put(next_index);
+			GrantRoundCount::put(next_index);
 
 			// Transfer matching fund to module account
 			T::Currency::transfer(
@@ -230,6 +243,20 @@ decl_module! {
 			)?;
 
 			Self::deposit_event(RawEvent::GrantRoundCreated(index));
+		}
+
+		#[weight = 10_000 + T::DbWeight::get().reads_writes(1,1)]
+		pub fn cancel_round(origin) {
+			let count = ProjectCount::get();
+			let round = <GrantRounds<T>>::get(count-1).unwrap();
+			GrantRoundCount::put(count-1);
+			// Refund
+			T::Currency::transfer(
+				&Self::account_id(),
+				&round.funder,
+				round.matching_fund,
+				ExistenceRequirement::AllowDeath
+			)?;
 		}
 
 		/// Contribute a grant
