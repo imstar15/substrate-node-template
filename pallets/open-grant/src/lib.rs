@@ -272,13 +272,13 @@ decl_module! {
 			let now = <frame_system::Module<T>>::block_number();
 			
 			// round list must be not none
-			let round_index = GrantRoundCount::get() - 1;
+			let round_index = GrantRoundCount::get();
 			
 			debug::debug!("now: {:#?}", now);
 			debug::debug!("round_index: {}", round_index);
 			ensure!(round_index > 0, Error::<T>::NoActiveRound);
 			// The round must be in progress
-			let mut round = <GrantRounds<T>>::get(round_index).unwrap();
+			let mut round = <GrantRounds<T>>::get(round_index-1).unwrap();
 			debug::debug!("round: {:#?}", round);
 			ensure!(round.start < now, Error::<T>::NoActiveRound);
 			debug::debug!("11111");
