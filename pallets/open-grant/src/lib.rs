@@ -16,7 +16,7 @@ use sp_runtime::{
 	ModuleId,
 };
 
-use frame_system::ensure_signed;
+use frame_system::{ensure_signed, ensure_root};
 use sp_std::prelude::*;
 use sp_std::{convert::{TryInto}};
 use integer_sqrt::IntegerSquareRoot;
@@ -211,6 +211,7 @@ decl_module! {
 		/// grant_indexes: the grants were selected for this round
 		#[weight = 10_000 + T::DbWeight::get().reads_writes(1,1)]
 		pub fn schedule_round(origin, start: T::BlockNumber, end: T::BlockNumber, matching_fund: BalanceOf<T>, project_indexes: Vec<ProjectIndex>) {
+			// ensure_root(origin.clone())?;
 			let who = ensure_signed(origin)?;
 			let now = <frame_system::Module<T>>::block_number();
 			let index = GrantRoundCount::get();
@@ -247,8 +248,13 @@ decl_module! {
 
 		#[weight = 10_000 + T::DbWeight::get().reads_writes(1,1)]
 		pub fn cancel_round(origin) {
-			let count = ProjectCount::get();
+			let now = <frame_system::Module<T>>::block_number();
+			let count = GrantRoundCount::get();
 			let round = <GrantRounds<T>>::get(count-1).unwrap();
+
+			// Ensure current round is not processing
+			ensure!(round.end < now, Error::<T>::RoundProcessing);
+
 			GrantRoundCount::put(count-1);
 			// Refund
 			T::Currency::transfer(
@@ -266,11 +272,18 @@ decl_module! {
 			let now = <frame_system::Module<T>>::block_number();
 			
 			// round list must be not none
-			let round_index = ProjectCount::get() - 1;
+			let round_index = GrantRoundCount::get() - 1;
+			
+			debug::debug!("now: {:#?}", now);
+			debug::debug!("round_index: {}", round_index);
 			ensure!(round_index > 0, Error::<T>::NoActiveRound);
 			// The round must be in progress
-			let mut round = <GrantRounds<T>>::get(round_index).ok_or(Error::<T>::NoActiveRound)?;
-			ensure!(round.end < now, Error::<T>::NoActiveRound);
+			let mut round = <GrantRounds<T>>::get(round_index).unwrap();
+			debug::debug!("round: {:#?}", round);
+			ensure!(round.start < now, Error::<T>::NoActiveRound);
+			debug::debug!("11111");
+			ensure!(round.end > now, Error::<T>::NoActiveRound);
+			debug::debug!("22222");
 
 			// Find grant by index
 			let mut found_grant: Option<&mut GrantOf::<T>> = None;
