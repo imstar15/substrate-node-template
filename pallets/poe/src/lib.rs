@@ -4,7 +4,7 @@
 /// Learn more about FRAME and the core library of Substrate FRAME pallets:
 /// https://substrate.dev/docs/en/knowledgebase/runtime/frame
 
-use frame_support::{decl_module, decl_storage, decl_event, decl_error, dispatch, traits::Get, ensure, StorageMap};
+use frame_support::{decl_module, decl_storage, decl_event, decl_error, ensure, StorageMap};
 use frame_system::ensure_signed;
 use sp_std::vec::Vec;
 
@@ -36,6 +36,7 @@ decl_event! {
         ClaimCreated(AccountId, Vec<u8>),
         /// Event emitted when a claim is revoked by the owner. [who, claim]
         ClaimRevoked(AccountId, Vec<u8>),
+        ClaimTransferred(AccountId, AccountId, Vec<u8>),
     }
 }
 
@@ -105,6 +106,16 @@ decl_module! {
 
             // Emit an event that the claim was erased.
             Self::deposit_event(RawEvent::ClaimRevoked(sender, proof));
+        }
+
+        #[weight = 10_000]
+        fn transfer_claim(origin, proof: Vec<u8>, to_address: T::AccountId) {
+            let sender = ensure_signed(origin)?;
+            ensure!(Proofs::<T>::contains_key(&proof), Error::<T>::NoSuchProof);
+            let (owner, block) = Proofs::<T>::get(&proof);
+            ensure!(sender == owner, Error::<T>::NotProofOwner);
+            Proofs::<T>::insert(&proof, (&to_address, block));
+            Self::deposit_event(RawEvent::ClaimTransferred(sender, to_address, proof));
         }
 	}
 }
