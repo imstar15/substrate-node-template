@@ -274,9 +274,16 @@ impl pallet_template::Config for Runtime {
 	type Event = Event;
 }
 
+parameter_types! {
+	pub const KittyDeposit: u128 = 1_000;
+}
+
 impl pallet_kitties::Config for Runtime {
 	type Event = Event;
 	type Randomness = RandomnessCollectiveFlip;
+	type KittyIndex = Index;
+	type Currency = Balances;
+	type KittyDeposit = KittyDeposit;
 }
 
 // Create the runtime by composing the FRAME pallets that were previously configured.
