@@ -15,6 +15,14 @@ benchmarks! {
 	verify {
 		assert_eq!(Something::<T>::get(), Some(s));
 	}
+
+	calculate {
+		let s in 0 .. 100;
+		let caller: T::AccountId = whitelisted_caller();
+	}: _(RawOrigin::Signed(caller), s)
+	verify {
+		assert_eq!(Something::<T>::get(), Some(s*s));
+	}
 }
 
 impl_benchmark_test_suite!(
