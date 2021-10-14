@@ -13,7 +13,9 @@ type Block = frame_system::mocking::MockBlock<Test>;
 pub type Balance = u128;
 
 /// An index to a block.
-pub type BlockNumber = u32;
+pub type BlockNumber = u64;
+
+pub type Index = u32;
 
 // Configure a mock runtime to test the pallet.
 frame_support::construct_runtime!(
@@ -25,14 +27,14 @@ frame_support::construct_runtime!(
 		System: frame_system::{Pallet, Call, Config, Storage, Event<T>},
 		Balances: pallet_balances::{Pallet, Call, Storage, Config<T>, Event<T>},
 		RandomnessCollectiveFlip: pallet_randomness_collective_flip::{Pallet, Storage},
-		Kitties: pallet_kitties::{Pallet, Call, Storage, Event<T>},
+		KittiesModule: pallet_kitties::{Pallet, Call, Storage, Event<T>},
 	}
 );
 
 impl pallet_randomness_collective_flip::Config for Test {}
 
 parameter_types! {
-	pub const BlockHashCount: u64 = 250;
+	pub const BlockHashCount: u32 = 250;
 	pub const SS58Prefix: u8 = 42;
 }
 
@@ -65,7 +67,7 @@ impl system::Config for Test {
 parameter_types! {
 	pub const ExistentialDeposit: u128 = 500;
 	pub const MaxLocks: u32 = 50;
-	pub const KittyDepositBase: u32 = 1_000;
+	pub const KittyDeposit: u32 = 1_000;
 }
 
 impl pallet_balances::Config for Test {
@@ -87,7 +89,7 @@ impl pallet_kitties::Config for Test {
 	type Randomness = RandomnessCollectiveFlip;
 	type KittyIndex = Index;
 	type Currency = Balances;
-	type KittyDepositBase = KittyDepositBase;
+	type KittyDeposit = KittyDeposit;
 }
 // Build genesis storage according to the mock runtime.
 pub fn new_test_ext() -> sp_io::TestExternalities {

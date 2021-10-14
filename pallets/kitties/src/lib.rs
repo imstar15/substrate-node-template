@@ -77,7 +77,7 @@ pub mod pallet {
 	pub enum Error<T> {
 		KittiesCountOverflow,
 		NotOwner,
-		SameParaentIndex,
+		SameParentIndex,
 		InvalidKittyIndex,
 		NotForSale,
 		NotEnoughBalance,
@@ -98,7 +98,7 @@ pub mod pallet {
 
 			let dna = Self::random_value(&who);
 
-			Self::insert_kitty(&who, kitty_id + 1u32.into(), Kitty(dna));
+			Self::insert_kitty(&who, kitty_id, Kitty(dna));
 
 			Self::deposit_event(Event::KittyCreated(who, kitty_id));
 
@@ -119,7 +119,7 @@ pub mod pallet {
 		#[pallet::weight(0)]
 		pub fn breed(origin: OriginFor<T>, kitty_id_1: T::KittyIndex, kitty_id_2: T::KittyIndex) -> DispatchResult {
 			let who = ensure_signed(origin)?;
-			ensure!(kitty_id_1 != kitty_id_2, Error::<T>::SameParaentIndex);
+			ensure!(kitty_id_1 != kitty_id_2, Error::<T>::SameParentIndex);
 
 			let kitty1 = Self::kitties(kitty_id_1).ok_or(Error::<T>::InvalidKittyIndex)?;
 			let kitty2 = Self::kitties(kitty_id_2).ok_or(Error::<T>::InvalidKittyIndex)?;
@@ -136,7 +136,7 @@ pub mod pallet {
 				new_dna[i] = (selector[i] & dna_1[i]) | (selector[i] & dna_2[i]);
 			}
 			
-			Self::insert_kitty(&who, kitty_id + 1u32.into(), Kitty(new_dna));
+			Self::insert_kitty(&who, kitty_id, Kitty(new_dna));
 			Self::deposit_event(Event::KittyCreated(who, kitty_id));
 
 			Ok(())
@@ -196,7 +196,7 @@ pub mod pallet {
 		fn insert_kitty(owner: &T::AccountId, kitty_id: T::KittyIndex, kitty: Kitty) {
 			Kitties::<T>::insert(kitty_id, Some(kitty));
 			Owner::<T>::insert(kitty_id, Some(owner.clone()));
-			KittiesCount::<T>::put(kitty_id);
+			KittiesCount::<T>::put(kitty_id + 1u32.into());
 		}
 
 		fn next_kitty_id() -> sp_std::result::Result<T::KittyIndex, DispatchError> {
